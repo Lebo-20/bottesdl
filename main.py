@@ -58,11 +58,11 @@ async def main() -> None:
 
     # ── Register Routers ──
     dp.include_routers(
+        vigloo.router,
         start.router,
         search.router,
         menu.router,
         drama.router,
-        vigloo.router,
         owner.router,
     )
 

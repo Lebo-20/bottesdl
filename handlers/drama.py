@@ -4,9 +4,12 @@ Menangani callback untuk melihat detail drama dan memutar episode.
 """
 
 import logging
+import os
+import time
+import asyncio
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, URLInputFile
+from aiogram.types import CallbackQuery, URLInputFile, FSInputFile
 
 from keyboards.inline import (
     drama_detail_keyboard,
@@ -14,6 +17,8 @@ from keyboards.inline import (
     back_to_home_keyboard,
 )
 from services.api import fetch_drama_detail, get_video_url, get_available_qualities
+from services.catbox import upload_to_catbox
+from services.tele_client import send_file_via_telethon
 
 router = Router(name="drama")
 logger = logging.getLogger(__name__)
@@ -207,21 +212,34 @@ async def cb_episode_play(callback: CallbackQuery) -> None:
         pass
 
     if video_url:
-        try:
-            video = URLInputFile(video_url, filename=f"ep_{ep_number}.mp4")
-            await callback.message.answer_video(
-                video=video,
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=keyboard,
+        target_quality = "720P" # Default quality
+        status_msg = await callback.message.answer(f"⏳ Sedang mendownload *Episode {ep_number}* ({target_quality})...\n(Mungkin perlu 1-2 menit, mohon tunggu)", parse_mode="Markdown")
+        
+        from player import download_generic_video
+        file_path = await download_generic_video(video_url, f"drama_{drama_id}_{ep_number}_{target_quality}")
+        
+        if file_path:
+            file_size = os.path.getsize(file_path) / (1024 * 1024)
+            await status_msg.edit_text(f"🚀 Sedang mengirim file Episode {ep_number} ({file_size:.2f} MB)...")
+            
+            # Method 1: Telethon (Mandatory Video)
+            caption = f"🎬 <b>{drama.get('title', 'Unknown')}</b>\n▶️ Episode {ep_number} ({target_quality})"
+            upload_success = await send_file_via_telethon(
+                chat_id=callback.from_user.id,
+                file_path=file_path,
+                caption=caption
             )
-        except Exception as e:
-            logger.error("Gagal kirim video URL: %s", e)
-            await callback.message.answer(
-                text + f"\n\n🎬 <b>Link:</b> {video_url}",
-                parse_mode="HTML",
-                reply_markup=keyboard,
-            )
+            
+            if upload_success:
+                await status_msg.edit_text("✅ Video berhasil terkirim!")
+            else:
+                # Gagal total (Bot wajib kirim video, tapi Telegram/Telethon gagal)
+                await status_msg.edit_text("❌ Gagal mengirim video secara langsung ke Telegram. Server sedang sibuk, silakan coba lagi nanti.")
+            
+            # Cleanup
+            if os.path.exists(file_path): os.remove(str(file_path))
+        else:
+            await status_msg.edit_text("❌ Gagal mendownload video. Stream sedang tidak tersedia atau dilindungi.")
     else:
         await callback.message.answer(
             text + "\n\n⚠️ <b>Video tidak tersedia saat ini.</b>",
@@ -281,29 +299,32 @@ async def cb_quality_select(callback: CallbackQuery) -> None:
     )
 
     if video_url:
-        try:
-            # Hapus pesan lama dan kirim video baru (karena tidak bisa edit text ke video)
-            await callback.message.delete()
-            video = URLInputFile(video_url, filename=f"ep_{ep_number}_{quality}.mp4")
-            await callback.message.answer_video(
-                video=video,
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=keyboard,
+        status_msg = await callback.message.answer(f"⏳ Sedang mendownload *Episode {ep_number}* ({quality})...\n(Mungkin perlu 1-2 menit)", parse_mode="Markdown")
+        
+        from player import download_generic_video
+        file_path = await download_generic_video(video_url, f"drama_{drama_id}_{ep_number}_{quality}")
+        
+        if file_path:
+            file_size = os.path.getsize(file_path) / (1024 * 1024)
+            await status_msg.edit_text(f"🚀 Sedang mengirim file Episode {ep_number} ({file_size:.2f} MB)...")
+            
+            # Telethon (Wajib Video)
+            caption = f"🎬 <b>{drama.get('title', 'Unknown')}</b>\n▶️ Episode {ep_number} ({quality})"
+            upload_success = await send_file_via_telethon(
+                chat_id=callback.from_user.id,
+                file_path=file_path,
+                caption=caption
             )
-        except Exception as e:
-            logger.error("Gagal ganti kualitas video: %s", e)
-            try:
-                await callback.message.edit_text(
-                    text + f"\n\n🎬 <b>Link:</b> {video_url}",
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                )
-            except Exception:
-                await callback.message.answer(
-                    text + f"\n\n🎬 <b>Link:</b> {video_url}",
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                )
+            
+            if upload_success:
+                try: await callback.message.delete()
+                except: pass
+                await status_msg.edit_text("✅ Video berhasil terkirim!")
+            else:
+                await status_msg.edit_text("❌ Gagal mengirim video secara langsung. Silakan coba lagi nanti.")
+            
+            if os.path.exists(file_path): os.remove(str(file_path))
+        else:
+            await status_msg.edit_text("❌ Gagal mendownload video kualitas ini.")
     else:
         await callback.answer("⚠️ Kualitas tidak tersedia", show_alert=True)

@@ -172,3 +172,40 @@ async def merge_subtitles(video_path: str, sub_url: str, output_path: str) -> Op
         logger.error("Softsub merge failed: %s", e)
     
     return None
+
+
+async def download_generic_video(
+    url: str, 
+    output_name: str
+) -> Optional[str]:
+    """Download video dari URL langsung menggunakan aria2c (lebih cepat & stabil)."""
+    output_path = os.path.join(TEMP_DIR, f"{output_name}.mp4")
+    
+    cmd = [
+        "aria2c",
+        "-x", "16",
+        "-s", "16",
+        "-k", "1M",
+        "--no-conf",
+        "-o", f"{output_name}.mp4",
+        "-d", TEMP_DIR,
+        "--allow-overwrite", "true",
+        url
+    ]
+    
+    logger.info("Starting aria2c download: %s", url)
+    
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.communicate()
+        
+        if process.returncode == 0 and os.path.exists(output_path):
+            return output_path
+    except Exception:
+        logger.exception("Error downloading generic video %s:", url)
+    
+    return None

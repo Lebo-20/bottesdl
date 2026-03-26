@@ -1132,3 +1132,15 @@ ConnectionResetError: Cannot write to closing transport
 2026-03-27 01:17:03 | INFO     | __main__ — 👋 Bot dihentikan oleh user.
 2026-03-27 01:17:15 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
 2026-03-27 01:17:15 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 01:18:06 | INFO     | __main__ — 🛑 Dramaku Bot berhenti.
+2026-03-27 01:18:06 | INFO     | __main__ — 👋 Bot dihentikan oleh user.
+2026-03-27 01:19:26 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 01:19:26 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 01:19:44 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 01:19:44 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 01:20:23 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 01:20:28 | INFO     | handlers.search — User 5888747846 → Cari Drama
+2026-03-27 01:20:43 | INFO     | handlers.search — User 5888747846 mencari: 'Cinta'
+2026-03-27 01:20:48 | INFO     | handlers.drama — User 5888747846 → Detail Drama 2036619859044655106
+2026-03-27 01:21:00 | INFO     | handlers.drama — User 5888747846 → Episode 1 drama 2036619859044655106
+2026-03-27 01:21:32 | ERROR    | handlers.drama — Gagal kirim video URL: HTTP Client says - Request timeout error
