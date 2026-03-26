@@ -204,6 +204,7 @@ async def cb_episode_play(callback: CallbackQuery) -> None:
         episode_number=ep_number,
         total_episodes=total_episodes,
         available_qualities=qualities,
+        episodes=drama.get("episodes", []),
     )
 
     try:
@@ -296,6 +297,7 @@ async def cb_quality_select(callback: CallbackQuery) -> None:
         episode_number=ep_number,
         total_episodes=drama["total_episodes"],
         available_qualities=qualities,
+        episodes=drama.get("episodes", []),
     )
 
     if video_url:

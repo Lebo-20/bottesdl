@@ -99,37 +99,41 @@ def vigloo_detail_keyboard(
     episodes: List[Dict[str, Any]],
     page: int = 0,
 ) -> InlineKeyboardMarkup:
+    """Keyboard detail drama Vigloo — grid tiled (3 kolom)."""
     builder = InlineKeyboardBuilder()
 
     ep_list = list(episodes)
     total_pages = max(1, math.ceil(len(ep_list) / EPISODES_PER_GRID))
     start = page * EPISODES_PER_GRID
     end = start + EPISODES_PER_GRID
-    
     page_episodes = ep_list[start:end]
 
+    # ── Episode grid (Tiled Numbers) ──
     for ep in page_episodes:
         ep_val = ep.get("number") or ep.get("ep") or ep.get("episode")
-        ep_num = str(ep_val) if ep_val is not None else "Unknown"
+        ep_num = str(ep_val) if ep_val is not None else "?"
         
         builder.button(
-            text=f"▶ Ep {ep_num}",
+            text=f"{ep_num}",
             callback_data=f"vep:{season_id}:{ep_num}",
         )
-    builder.adjust(4)
+    builder.adjust(3) # 3 Kolom sesuai gambar
 
+    # ── Navigasi halaman ──
     nav_buttons = []
     if page > 0:
-        nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"vpep:{program_id}:{season_id}:{page - 1}"))
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Halaman", callback_data=f"vpep:{program_id}:{season_id}:{page - 1}"))
     
     nav_buttons.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_pages}", callback_data="noop"))
     
     if page < total_pages - 1:
-        nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"vpep:{program_id}:{season_id}:{page + 1}"))
+        nav_buttons.append(InlineKeyboardButton(text="Selanjutnya ➡️", callback_data=f"vpep:{program_id}:{season_id}:{page + 1}"))
 
     if nav_buttons:
         builder.row(*nav_buttons)
 
+    # ── Action Buttons ──
+    builder.row(InlineKeyboardButton(text="🔍 Cari Drama Lain", callback_data="vmenu:search"))
     builder.row(
         InlineKeyboardButton(text="🔙 Kembali", callback_data="vigloo:home"),
         InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home"),

@@ -126,56 +126,39 @@ def drama_detail_keyboard(
     episodes: list[dict],
     page: int = 0,
 ) -> InlineKeyboardMarkup:
-    """
-    Keyboard detail drama — grid episode + navigasi halaman.
-    Maksimal EPISODES_PER_PAGE episode per halaman, layout 4 kolom.
-    """
+    """Keyboard detail drama — grid episode tiled (3 kolom)."""
     builder = InlineKeyboardBuilder()
 
     total_pages = max(1, math.ceil(len(episodes) / EPISODES_PER_PAGE))
+    all_eps = list(episodes)
     start = page * EPISODES_PER_PAGE
     end = start + EPISODES_PER_PAGE
-    page_episodes = episodes[start:end]
+    page_episodes = all_eps[start:end]
 
-    # ── Episode buttons (grid 4 kolom) ──
+    # ── Episode grid (Tiled Numbers) ──
     for ep in page_episodes:
         ep_num = ep["number"]
         builder.button(
-            text=f"▶ Ep {ep_num}",
+            text=f"{ep_num}",
             callback_data=f"ep:{drama_id}:{ep_num}",
         )
-    builder.adjust(4)  # 4 kolom
+    builder.adjust(3) # 3 Kolom sesuai gambar
 
     # ── Navigasi halaman ──
-    nav_buttons: list[InlineKeyboardButton] = []
-
+    nav_buttons = []
     if page > 0:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text="⬅️ Sebelumnya",
-                callback_data=f"ep_page:{drama_id}:{page - 1}",
-            )
-        )
-
-    nav_buttons.append(
-        InlineKeyboardButton(
-            text=f"📄 {page + 1}/{total_pages}",
-            callback_data="noop",
-        )
-    )
-
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Halaman", callback_data=f"ep_page:{drama_id}:{page - 1}"))
+    
+    nav_buttons.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_pages}", callback_data="noop"))
+    
     if page < total_pages - 1:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text="➡️ Selanjutnya",
-                callback_data=f"ep_page:{drama_id}:{page + 1}",
-            )
-        )
+        nav_buttons.append(InlineKeyboardButton(text="Selanjutnya ➡️", callback_data=f"ep_page:{drama_id}:{page + 1}"))
 
     if total_pages > 1:
         builder.row(*nav_buttons)
 
-    # ── Kembali ──
+    # ── Kembali & Search ──
+    builder.row(InlineKeyboardButton(text="🔍 Cari Drama Lain", callback_data="menu:search"))
     builder.row(
         InlineKeyboardButton(text="🔙 Kembali", callback_data="menu:dramas:1"),
         InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home"),
@@ -194,53 +177,49 @@ def episode_player_keyboard(
     episode_number: int,
     total_episodes: int,
     available_qualities: list[str] | None = None,
+    episodes: list[dict] | None = None, # Mendukung Grid di Player
 ) -> InlineKeyboardMarkup:
-    """Keyboard setelah episode di-play."""
+    """Keyboard player dengan Grid Episode sesuai gambar user."""
     builder = InlineKeyboardBuilder()
 
-    # ── Quality selection ──
+    # 1. Episode Grid (Jika data episodes tersedia)
+    if episodes:
+        all_eps = list(episodes)
+        # Tentukan halaman berdasarkan episode_number
+        page = (episode_number - 1) // EPISODES_PER_PAGE
+        start = page * EPISODES_PER_PAGE
+        end = start + EPISODES_PER_PAGE
+        page_items = all_eps[start:end]
+        total_p = max(1, math.ceil(len(all_eps) / EPISODES_PER_PAGE))
+        
+        for ep in page_items:
+            e_num = ep.get("number") or ep.get("ep") or 0
+            # Highlight episode saat ini
+            p_text = f"【 {e_num} 】" if e_num == episode_number else f"{e_num}"
+            builder.button(text=p_text, callback_data=f"ep:{drama_id}:{e_num}")
+        builder.adjust(3) # Grid 3 Kolom
+
+        # Navigasi halaman grid
+        nav_p = []
+        if page > 0:
+            nav_p.append(InlineKeyboardButton(text="⬅️ Halaman", callback_data=f"ep_page:{drama_id}:{page - 1}"))
+        nav_p.append(InlineKeyboardButton(text=f"📄 {page + 1}/{total_p}", callback_data="noop"))
+        if page < total_p - 1:
+            nav_p.append(InlineKeyboardButton(text="Selanjutnya ➡️", callback_data=f"ep_page:{drama_id}:{page + 1}"))
+        builder.row(*nav_p)
+
+    # 2. Quality selection
     if available_qualities and len(available_qualities) > 1:
         quality_buttons = []
         for q in available_qualities:
-            quality_buttons.append(
-                InlineKeyboardButton(
-                    text=f"📺 {q}",
-                    callback_data=f"quality:{drama_id}:{episode_number}:{q}",
-                )
-            )
+            quality_buttons.append(InlineKeyboardButton(text=f"📺 {q}", callback_data=f"quality:{drama_id}:{episode_number}:{q}"))
         builder.row(*quality_buttons)
 
-    # ── Episode navigation ──
-    nav: list[InlineKeyboardButton] = []
-
-    if episode_number > 1:
-        nav.append(
-            InlineKeyboardButton(
-                text="⏮ Ep Sebelumnya",
-                callback_data=f"ep:{drama_id}:{episode_number - 1}",
-            )
-        )
-
-    if episode_number < total_episodes:
-        nav.append(
-            InlineKeyboardButton(
-                text="Ep Selanjutnya ⏭",
-                callback_data=f"ep:{drama_id}:{episode_number + 1}",
-            )
-        )
-
-    if nav:
-        builder.row(*nav)
-
+    # 3. Action Buttons
+    builder.row(InlineKeyboardButton(text="🔍 Cari Drama Lain", callback_data="menu:search"))
     builder.row(
-        InlineKeyboardButton(
-            text="📋 Daftar Episode",
-            callback_data=f"drama:{drama_id}",
-        ),
-        InlineKeyboardButton(
-            text="🏠 Menu Utama",
-            callback_data="menu:home",
-        ),
+        InlineKeyboardButton(text="📋 Daftar Episode", callback_data=f"drama:{drama_id}"),
+        InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home"),
     )
 
     return builder.as_markup()
