@@ -228,7 +228,8 @@ async def cb_episode_play(callback: CallbackQuery) -> None:
             upload_success = await send_file_via_telethon(
                 chat_id=callback.from_user.id,
                 file_path=file_path,
-                caption=caption
+                caption=caption,
+                reply_markup=keyboard
             )
             
             if upload_success:
@@ -315,7 +316,8 @@ async def cb_quality_select(callback: CallbackQuery) -> None:
             upload_success = await send_file_via_telethon(
                 chat_id=callback.from_user.id,
                 file_path=file_path,
-                caption=caption
+                caption=caption,
+                reply_markup=keyboard
             )
             
             if upload_success:

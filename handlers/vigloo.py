@@ -434,8 +434,6 @@ async def cb_vigloo_download(callback: CallbackQuery) -> None:
     # Download with retry
     file_path = None
     retries = 1
-    
-    # Cari subtitle Indonesia (ID) untuk softsub
     id_sub_url = None
     
     for attempt in range(retries + 1):
@@ -469,11 +467,9 @@ async def cb_vigloo_download(callback: CallbackQuery) -> None:
             await asyncio.sleep(2)
     
     if not file_path:
-        await status_msg.edit_text("❌ Download gagal setelah beberapa kali percobaan.\n\n🔄 *Fallback ke Streaming Link...*", parse_mode="Markdown")
-        await asyncio.sleep(1)
-        await perform_vigloo_play(callback.message, season_id, ep)
+        await status_msg.edit_text("❌ Download gagal setelah beberapa kali percobaan.")
         return
-    
+        
     # Validasi & Log Ukuran File
     if not os.path.exists(file_path):
         await status_msg.edit_text("❌ File video tidak ditemukan.")
@@ -485,16 +481,29 @@ async def cb_vigloo_download(callback: CallbackQuery) -> None:
     
     # ── Upload Phase ──
     start_time = time.time()
-    
-    # Method 1: Telethon (Bypass Bot API limits & more stable)
     caption = f"🎬 <b>Vigloo Episode {ep}</b>\n📂 Ukuran: <code>{file_size:.2f} MB</code>"
     
-    await status_msg.edit_text(f"🚀 Sedang mengirim file Episode {ep} via Stable Stream...")
-    
+    # Build Keyboard Grid for Video
+    try:
+        from keyboards.inline import episode_player_keyboard
+        raw_eps = await fetch_vigloo_episodes(season_id)
+        drama_v = await fetch_vigloo_drama_detail(season_id)
+        total_v = drama_v.get("total_episodes", 0)
+        v_keyboard = episode_player_keyboard(
+            drama_id=str(season_id),
+            episode_number=ep,
+            total_episodes=total_v,
+            episodes=raw_eps
+        )
+    except Exception as e:
+        logger.error("Gagal buat keyboard grid Vigloo: %s", e)
+        v_keyboard = None
+
     upload_success = await send_file_via_telethon(
         chat_id=callback.from_user.id,
         file_path=file_path,
-        caption=caption
+        caption=caption,
+        reply_markup=v_keyboard
     )
     
     if upload_success:
@@ -502,35 +511,25 @@ async def cb_vigloo_download(callback: CallbackQuery) -> None:
         logger.info("Upload success (Telethon) in %.2f seconds", duration)
         await status_msg.edit_text(f"✅ Video Episode {ep} berhasil dikirim!")
         
-        # Hapus pesan pilihan cara tonton (yang ada di gambar user)
+        # Hapus pesan pilihan
         try: await callback.message.delete()
         except: pass
-
-        # Tombol Episode Selanjutnya
-        try:
-            drama = await fetch_vigloo_drama_detail(season_id)
-            total = drama.get("total_episodes", 0)
-            if ep < total:
-                next_kb = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text=f"⏭️ Next Episode {ep+1}", callback_data=f"vigloo_play:{season_id}:{ep+1}")
-                ]])
-                await callback.message.answer(f"✅ Selesai menonton Episode {ep}. Lanjut?", reply_markup=next_kb)
-        except: pass
     else:
-        # Method 2: Fallback to Catbox (Direct Download Link)
+        # Method 2: Fallback to Catbox
         logger.warning("Telethon upload failed for ep %s, trying Catbox...", ep)
         await status_msg.edit_text("⚠️ Gagal mengirim file langsung. Mengupload ke Hosting...")
         
         catbox_url = await upload_to_catbox(file_path)
         if catbox_url:
             await callback.message.answer(
-                f"✅ <b>Download Selesai!</b>\n\n🎬 Episode {ep}\n📂 Size: {file_size:.2f} MB\n\n🔗 <b>Link Download:</b>\n{catbox_url}",
-                parse_mode="HTML"
+                f"✅ <b>Download Selesai!</b>\n\n🎬 Episode {ep}\n📂 Size: {file_size:.2f} MB\n\n🔗 <b>Link:</b> {catbox_url}",
+                parse_mode="HTML",
+                reply_markup=v_keyboard
             )
             upload_success = True
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ Gagal mengirim video. Silakan gunakan link streaming.")
+            await status_msg.edit_text("❌ Gagal mengirim video. Silakan coba episode lain.")
 
     # Send Subtitles
     if upload_success and subtitles:
