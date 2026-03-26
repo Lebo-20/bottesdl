@@ -430,6 +430,7 @@ async def cb_vigloo_download(callback: CallbackQuery) -> None:
 
     await callback.answer("⏳ Memulai proses download...")
     status_msg = await callback.message.answer(f"⏳ Sedang mendownload *Episode {ep}* dari Vigloo...\n(Ini perlu beberapa saat, mohon tunggu)", parse_mode="Markdown")
+    await add_to_cleanup(state, status_msg.message_id)
     
     # Download with retry
     file_path = None

@@ -16,6 +16,7 @@ from aiogram.fsm.state import State, StatesGroup
 from config import DRAMAS_PER_PAGE
 from keyboards.inline import drama_list_keyboard, back_to_home_keyboard
 from services.api import fetch_dramas
+from middlewares.cleanup import add_to_cleanup
 
 router = Router(name="search")
 logger = logging.getLogger(__name__)
@@ -117,16 +118,18 @@ async def handle_search_query(message: Message, state: FSMContext) -> None:
     query = message.text.strip() if message.text else ""
 
     if len(query) < 2:
-        await message.answer(
+        res = await message.answer(
             "⚠️ Ketik minimal <b>2 huruf</b> untuk mencari drama.",
             parse_mode="HTML",
         )
+        await add_to_cleanup(state, res.message_id)
         return
 
     logger.info("User %s mencari: '%s'", message.from_user.id, query)
     await state.clear()
 
     loading = await message.answer("🔍 <b>Mencari drama...</b>", parse_mode="HTML")
+    await add_to_cleanup(state, loading.message_id)
 
     matched = await _get_search_results(query)
 
@@ -157,7 +160,8 @@ async def handle_search_query(message: Message, state: FSMContext) -> None:
         nav_prefix=f"sp:{query}:",
     )
 
-    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+    res = await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+    await add_to_cleanup(state, res.message_id)
 
 
 @router.callback_query(F.data.startswith("sp:"))

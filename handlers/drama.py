@@ -10,6 +10,7 @@ import asyncio
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, URLInputFile, FSInputFile
+from aiogram.fsm.context import FSMContext
 
 from keyboards.inline import (
     drama_detail_keyboard,
@@ -19,6 +20,7 @@ from keyboards.inline import (
 from services.api import fetch_drama_detail, get_video_url, get_available_qualities
 from services.catbox import upload_to_catbox
 from services.tele_client import send_file_via_telethon
+from middlewares.cleanup import add_to_cleanup
 
 router = Router(name="drama")
 logger = logging.getLogger(__name__)
@@ -148,7 +150,7 @@ async def cb_episode_page(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("ep:"))
-async def cb_episode_play(callback: CallbackQuery) -> None:
+async def cb_episode_play(callback: CallbackQuery, state: FSMContext) -> None:
     """Memutar episode — ambil video URL dari API."""
     parts = callback.data.split(":")
     drama_id = parts[1]
@@ -215,6 +217,7 @@ async def cb_episode_play(callback: CallbackQuery) -> None:
     if video_url:
         target_quality = "720P" # Default quality
         status_msg = await callback.message.answer(f"⏳ Sedang mendownload *Episode {ep_number}* ({target_quality})...\n(Mungkin perlu 1-2 menit, mohon tunggu)", parse_mode="Markdown")
+        await add_to_cleanup(state, status_msg.message_id)
         
         from player import download_generic_video
         file_path = await download_generic_video(video_url, f"drama_{drama_id}_{ep_number}_{target_quality}")
@@ -256,7 +259,7 @@ async def cb_episode_play(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data.startswith("quality:"))
-async def cb_quality_select(callback: CallbackQuery) -> None:
+async def cb_quality_select(callback: CallbackQuery, state: FSMContext) -> None:
     """Pilih kualitas video yang berbeda."""
     parts = callback.data.split(":")
     drama_id = parts[1]
@@ -303,6 +306,7 @@ async def cb_quality_select(callback: CallbackQuery) -> None:
 
     if video_url:
         status_msg = await callback.message.answer(f"⏳ Sedang mendownload *Episode {ep_number}* ({quality})...\n(Mungkin perlu 1-2 menit)", parse_mode="Markdown")
+        await add_to_cleanup(state, status_msg.message_id)
         
         from player import download_generic_video
         file_path = await download_generic_video(video_url, f"drama_{drama_id}_{ep_number}_{quality}")
