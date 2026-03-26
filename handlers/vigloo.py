@@ -510,7 +510,8 @@ async def cb_vigloo_download(callback: CallbackQuery) -> None:
     if upload_success:
         duration = time.time() - start_time
         logger.info("Upload success (Telethon) in %.2f seconds", duration)
-        await status_msg.edit_text(f"✅ Video Episode {ep} berhasil dikirim!")
+        try: await status_msg.delete()
+        except: pass
         
         # Hapus pesan pilihan
         try: await callback.message.delete()

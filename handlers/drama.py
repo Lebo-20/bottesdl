@@ -236,10 +236,10 @@ async def cb_episode_play(callback: CallbackQuery, state: FSMContext) -> None:
             )
             
             if upload_success:
-                await status_msg.edit_text("✅ Video berhasil terkirim!")
+                try: await status_msg.delete()
+                except: pass
             else:
-                # Gagal total (Bot wajib kirim video, tapi Telegram/Telethon gagal)
-                await status_msg.edit_text("❌ Gagal mengirim video secara langsung ke Telegram. Server sedang sibuk, silakan coba lagi nanti.")
+                await status_msg.edit_text("❌ Gagal mengirim video secara langsung ke Telegram.")
             
             # Cleanup
             if os.path.exists(file_path): os.remove(str(file_path))

@@ -55,18 +55,12 @@ class CleanupMiddleware(BaseMiddleware):
             chat_id = event.chat.id
             text = event.text or ""
             
-            # Ambil state saat ini (jika ada)
-            current_state = ""
-            if state:
-                st = await state.get_state()
-                current_state = str(st).lower() if st else ""
-            
-            # Jika ini PERINTAH BARU atau sedang dalam mode SEARCH
-            if text.startswith("/") or "search" in current_state:
+            # Kita bersihkan pesan LAMA setiap kali User mengetik sesuatu yang baru (kecuali Bot sendiri)
+            if not event.from_user.is_bot:
                 if bot and state:
                     await perform_cleanup(bot, state, chat_id)
             
-            # Tambahkan pesan USER saat ini ke daftar
+            # Tambahkan pesan USER saat ini ke daftar untuk dihapus nanti
             if state:
                 await add_to_cleanup(state, event.message_id)
             
