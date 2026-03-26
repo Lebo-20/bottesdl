@@ -178,22 +178,25 @@ async def download_generic_video(
     url: str, 
     output_name: str
 ) -> Optional[str]:
-    """Download video dari URL langsung menggunakan aria2c (lebih cepat & stabil)."""
+    """Download video dari URL menggunakan yt-dlp + aria2c (Power Combo)."""
     output_path = os.path.join(TEMP_DIR, f"{output_name}.mp4")
     
+    # User-Agent & Referer untuk bypass protection
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
     cmd = [
-        "aria2c",
-        "-x", "16",
-        "-s", "16",
-        "-k", "1M",
-        "--no-conf",
-        "-o", f"{output_name}.mp4",
-        "-d", TEMP_DIR,
-        "--allow-overwrite", "true",
+        "yt-dlp",
+        "-o", output_path,
+        "--downloader", "aria2c",
+        "--downloader-args", "aria2c:-x 16 -s 16 -k 1M --no-conf",
+        "--user-agent", ua,
+        "--no-check-certificate",
+        "--format", "bestvideo+bestaudio/best",
+        "--merge-output-format", "mp4",
         url
     ]
     
-    logger.info("Starting aria2c download: %s", url)
+    logger.info("Starting power download with yt-dlp: %s", url)
     
     try:
         process = await asyncio.create_subprocess_exec(
@@ -204,8 +207,11 @@ async def download_generic_video(
         await process.communicate()
         
         if process.returncode == 0 and os.path.exists(output_path):
+            logger.info("Power download success: %s", output_path)
             return output_path
+        else:
+            logger.error("yt-dlp generic download failed with code %s", process.returncode)
     except Exception:
-        logger.exception("Error downloading generic video %s:", url)
+        logger.exception("Error in power download %s:", url)
     
     return None

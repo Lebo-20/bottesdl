@@ -1144,3 +1144,8 @@ ConnectionResetError: Cannot write to closing transport
 2026-03-27 01:20:48 | INFO     | handlers.drama — User 5888747846 → Detail Drama 2036619859044655106
 2026-03-27 01:21:00 | INFO     | handlers.drama — User 5888747846 → Episode 1 drama 2036619859044655106
 2026-03-27 01:21:32 | ERROR    | handlers.drama — Gagal kirim video URL: HTTP Client says - Request timeout error
+2026-03-27 01:28:13 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 01:28:15 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 01:28:20 | INFO     | handlers.menu — User 5888747846 → Daftar Drama halaman 1
+2026-03-27 01:28:27 | INFO     | handlers.drama — User 5888747846 → Detail Drama 2036732442342907905
+2026-03-27 01:28:33 | INFO     | handlers.drama — User 5888747846 → Episode 1 drama 2036732442342907905
