@@ -56,6 +56,11 @@ async def main() -> None:
     )
     dp = Dispatcher(storage=MemoryStorage())
 
+    # ── Register Middlewares ──
+    from middlewares.cleanup import CleanupMiddleware
+    dp.message.middleware(CleanupMiddleware())
+    dp.callback_query.middleware(CleanupMiddleware())
+
     # ── Register Routers ──
     dp.include_routers(
         vigloo.router,
