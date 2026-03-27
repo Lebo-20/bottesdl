@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.log
+.env
+temp_vigloo/
+temp_melolo/
+*.mp4
+*.vtt
