@@ -55,6 +55,23 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def melolo_menu_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard utama untuk Melolo — mengarah ke sistem interaktif baru."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🎯 For You", callback_data="ml:foryou:0"),
+        InlineKeyboardButton(text="🔥 Trending", callback_data="ml:trending:0"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🆕 Latest", callback_data="ml:latest:0"),
+        InlineKeyboardButton(text="🔍 Search", callback_data="ml:search"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home")
+    )
+    return builder.as_markup()
+
+
 # ╔══════════════════════════════════════════════════════════╗
 # ║                  DRAMA LIST                             ║
 # ╚══════════════════════════════════════════════════════════╝

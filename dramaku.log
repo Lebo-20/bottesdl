@@ -1154,3 +1154,7 @@ ConnectionResetError: Cannot write to closing transport
 2026-03-27 12:28:37 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
 2026-03-27 12:28:37 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 2026-03-27 12:28:41 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 12:31:14 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 12:31:14 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 12:31:21 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 12:31:28 | INFO     | handlers.start — User 5888747846 memulai bot
