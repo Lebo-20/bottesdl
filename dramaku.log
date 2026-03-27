@@ -1158,3 +1158,112 @@ ConnectionResetError: Cannot write to closing transport
 2026-03-27 12:31:14 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 2026-03-27 12:31:21 | INFO     | handlers.start — User 5888747846 memulai bot
 2026-03-27 12:31:28 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 12:36:21 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 12:36:21 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 12:36:22 | ERROR    | aiogram.dispatcher — Failed to fetch updates - TelegramConflictError: Telegram server says - Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+2026-03-27 12:36:22 | WARNING  | aiogram.dispatcher — Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8647190265)
+2026-03-27 12:36:27 | ERROR    | aiogram.dispatcher — Failed to fetch updates - TelegramConflictError: Telegram server says - Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+2026-03-27 12:36:27 | WARNING  | aiogram.dispatcher — Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8647190265)
+2026-03-27 12:36:40 | INFO     | handlers.start — User 5888747846 memulai bot
+2026-03-27 12:36:50 | ERROR    | aiogram.event — Cause exception while process update id=297965726 by bot id=8647190265
+TelegramBadRequest: Telegram server says - Bad Request: there is no text in the message to edit
+Traceback (most recent call last):
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\dispatcher.py", line 320, in _process_update
+    response = await self.feed_update(bot, update, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\dispatcher.py", line 164, in feed_update
+    response = await self.update.wrap_outer_middleware(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\middlewares\error.py", line 27, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\middlewares\user_context.py", line 58, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\fsm\middleware.py", line 43, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\telegram.py", line 126, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\handler.py", line 71, in call
+    return await wrapped()
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\dispatcher.py", line 283, in _listen_update
+    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 161, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 153, in _wrapped
+    return await self._propagate_event(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 189, in _propagate_event
+    response = await router.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 161, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 153, in _wrapped
+    return await self._propagate_event(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 181, in _propagate_event
+    response = await observer.trigger(event, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\telegram.py", line 126, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "C:\bottelefree\middlewares\cleanup.py", line 83, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\handler.py", line 71, in call
+    return await wrapped()
+  File "C:\bottelefree\handlers\melolo.py", line 323, in cb_detail
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\methods\base.py", line 82, in emit
+    return await bot(self)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\bot.py", line 488, in __call__
+    return await self.session(self, method, timeout=request_timeout)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\session\base.py", line 259, in __call__
+    return cast(TelegramType, await middleware(bot, method))
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\session\aiohttp.py", line 177, in make_request
+    response = self.check_response(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\session\base.py", line 121, in check_response
+    raise TelegramBadRequest(method=method, message=description)
+aiogram.exceptions.TelegramBadRequest: Telegram server says - Bad Request: there is no text in the message to edit
+2026-03-27 12:37:40 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 12:37:40 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 12:37:46 | ERROR    | aiogram.event — Cause exception while process update id=297965727 by bot id=8647190265
+TelegramBadRequest: Telegram server says - Bad Request: there is no text in the message to edit
+Traceback (most recent call last):
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\dispatcher.py", line 320, in _process_update
+    response = await self.feed_update(bot, update, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\dispatcher.py", line 164, in feed_update
+    response = await self.update.wrap_outer_middleware(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\middlewares\error.py", line 27, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\middlewares\user_context.py", line 58, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\fsm\middleware.py", line 43, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\telegram.py", line 126, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\handler.py", line 71, in call
+    return await wrapped()
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\dispatcher.py", line 283, in _listen_update
+    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 161, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 153, in _wrapped
+    return await self._propagate_event(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 189, in _propagate_event
+    response = await router.propagate_event(update_type=update_type, event=event, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 161, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 153, in _wrapped
+    return await self._propagate_event(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\router.py", line 181, in _propagate_event
+    response = await observer.trigger(event, **kwargs)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\telegram.py", line 126, in trigger
+    return await wrapped_inner(event, kwargs)
+  File "C:\bottelefree\middlewares\cleanup.py", line 83, in __call__
+    return await handler(event, data)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\dispatcher\event\handler.py", line 71, in call
+    return await wrapped()
+  File "C:\bottelefree\handlers\melolo.py", line 323, in cb_detail
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\methods\base.py", line 82, in emit
+    return await bot(self)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\bot.py", line 488, in __call__
+    return await self.session(self, method, timeout=request_timeout)
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\session\base.py", line 259, in __call__
+    return cast(TelegramType, await middleware(bot, method))
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\session\aiohttp.py", line 177, in make_request
+    response = self.check_response(
+  File "C:\Users\mauta\AppData\Local\Programs\Python\Python310\lib\site-packages\aiogram\client\session\base.py", line 121, in check_response
+    raise TelegramBadRequest(method=method, message=description)
+aiogram.exceptions.TelegramBadRequest: Telegram server says - Bad Request: there is no text in the message to edit

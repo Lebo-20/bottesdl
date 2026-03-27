@@ -50,12 +50,14 @@ async def fetch_melolo_foryou(offset: int = 20) -> List[Dict[str, Any]]:
         return []
 
 
-async def fetch_melolo_latest() -> List[Dict[str, Any]]:
+async def fetch_melolo_latest(offset: int = 0) -> List[Dict[str, Any]]:
     """GET /latest — Mengambil daftar drama terbaru."""
     try:
         async with aiohttp.ClientSession() as session:
+            params = {"offset": offset}
             async with session.get(
                 f"{MELOLO_BASE_URL}/latest",
+                params=params,
                 headers=_headers(),
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
@@ -68,12 +70,14 @@ async def fetch_melolo_latest() -> List[Dict[str, Any]]:
         return []
 
 
-async def fetch_melolo_trending() -> List[Dict[str, Any]]:
+async def fetch_melolo_trending(offset: int = 0) -> List[Dict[str, Any]]:
     """GET /trending — Mengambil daftar drama trending."""
     try:
         async with aiohttp.ClientSession() as session:
+            params = {"offset": offset}
             async with session.get(
                 f"{MELOLO_BASE_URL}/trending",
+                params=params,
                 headers=_headers(),
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:

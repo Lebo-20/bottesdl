@@ -1,15 +1,18 @@
 """
-Handlers — Melolo API (Netflix-style Interactive Bot)
-Navigasi penuh berbasis inline keyboard, pagination, editMessage.
+Handlers — Melolo API (Video Player & Cleanup System)
+Support for playing video directly from bot and cleanup old messages.
 """
 
+import os
 import logging
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import (
     CallbackQuery,
     Message,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    FSInputFile,
+    InputMediaVideo,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,11 +27,12 @@ from services.melolo import (
     fetch_melolo_detail,
     fetch_melolo_stream,
 )
+from player import download_generic_video
+from middlewares.cleanup import perform_cleanup, add_to_cleanup
+from config import DRAMAS_PER_PAGE, EPISODES_PER_PAGE
 
 router = Router(name="melolo")
 logger = logging.getLogger(__name__)
-
-DRAMAS_PER_PAGE = 5  # Jumlah drama per halaman
 
 
 # ╔══════════════════════════════════════════════════════════╗
@@ -106,49 +110,72 @@ def _drama_list_kb(
     return builder.as_markup()
 
 
-def _detail_kb(book_id: str, video_list: list, back_data: str) -> InlineKeyboardMarkup:
-    """Keyboard detail drama dengan tombol tonton per episode."""
+def _player_kb(
+    book_id: str, 
+    video_list: list, 
+    current_vid: str, 
+    back_data: str,
+    ep_page: int = 0
+) -> InlineKeyboardMarkup:
+    """Keyboard player dengan grid episode (3 kolom)."""
     builder = InlineKeyboardBuilder()
 
-    for vid_item in video_list[:20]:
-        v_id = vid_item.get("vid")
-        v_idx = vid_item.get("vid_index")
-        if v_id and v_idx is not None:
-            builder.add(
-                InlineKeyboardButton(
-                    text=f"▶️ Ep {v_idx}",
-                    callback_data=f"ml:stream:{v_id}:{book_id}:{back_data}",
-                )
-            )
+    # Pagination episode grid (sama seperti di Vigloo)
+    total_eps = len(video_list)
+    total_pages = (total_eps + EPISODES_PER_PAGE - 1) // EPISODES_PER_PAGE
+    start = ep_page * EPISODES_PER_PAGE
+    end = start + EPISODES_PER_PAGE
+    cur_eps = video_list[start:end]
+
+    for v in cur_eps:
+        v_id = v.get("vid")
+        v_idx = v.get("vid_index")
+        # Highlight episode aktif
+        btn_text = f"【 {v_idx} 】" if v_id == current_vid else f"{v_idx}"
+        builder.button(
+            text=btn_text, 
+            callback_data=f"ml:stream:{v_id}:{book_id}:{back_data}:{ep_page}"
+        )
     builder.adjust(3)
 
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Kembali",
-            callback_data=f"ml:back:{back_data}",
-        )
-    )
-    return builder.as_markup()
+    # Navigasi grid
+    nav = []
+    if ep_page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ Halaman", callback_data=f"ml:ep_page:{book_id}:{current_vid}:{back_data}:{ep_page - 1}"))
+    
+    nav.append(InlineKeyboardButton(text=f"📄 {ep_page + 1}/{total_pages}", callback_data="noop"))
+    
+    if ep_page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="Selanjutnya ➡️", callback_data=f"ml:ep_page:{book_id}:{current_vid}:{back_data}:{ep_page + 1}"))
+    
+    if nav:
+        builder.row(*nav)
 
+    # Action buttons
+    builder.row(
+        InlineKeyboardButton(text="📋 Daftar Episode", callback_data=f"ml:detail:{book_id}:{back_data}"),
+        InlineKeyboardButton(text="🏠 Menu Utama", callback_data="ml:home")
+    )
 
-def _stream_kb(book_id: str, back_data: str) -> InlineKeyboardMarkup:
-    """Keyboard setelah stream — kembali ke detail."""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Kembali ke Detail",
-            callback_data=f"ml:detail:{book_id}:{back_data}",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="🏠 Menu Melolo", callback_data="ml:home")
-    )
     return builder.as_markup()
 
 
 # ╔══════════════════════════════════════════════════════════╗
 # ║               HELPER: Ambil & Tampilkan List            ║
 # ╚══════════════════════════════════════════════════════════╝
+
+async def _edit_safe(message: Message, text: str, kb: InlineKeyboardMarkup) -> None:
+    """Safe edit that handles text and caption."""
+    try:
+        # Hapus web preview biar rapi tapi biarkan jika di stream video
+        await message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        try:
+            await message.edit_caption(caption=text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            # Jika semua gagal (misal sudah terhapus), kirim pesan baru
+            await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
 
 async def _show_list(
     target,  # Message atau CallbackQuery.message
@@ -157,18 +184,17 @@ async def _show_list(
     query: str = "",
     edit: bool = True,
 ) -> None:
-    """Ambil data sesuai mode dan render list ke chat."""
-
+    # ... (header logic sama)
     # Ambil data dari API
     dramas = []
     if mode == "foryou":
         dramas = await fetch_melolo_foryou(offset=offset)
         header = "🎯 <b>Drama Untuk Anda</b>"
     elif mode == "trending":
-        dramas = await fetch_melolo_trending()
+        dramas = await fetch_melolo_trending(offset=offset)
         header = "🔥 <b>Drama Trending</b>"
     elif mode == "latest":
-        dramas = await fetch_melolo_latest()
+        dramas = await fetch_melolo_latest(offset=offset)
         header = "🆕 <b>Drama Terbaru</b>"
     elif mode == "search":
         dramas = await fetch_melolo_search(query, limit=DRAMAS_PER_PAGE, offset=offset)
@@ -176,11 +202,6 @@ async def _show_list(
     else:
         dramas = []
         header = "🎬 <b>Drama</b>"
-
-    # Pagination slice untuk trending/latest (sudah semua di-load)
-    if mode in ("trending", "latest"):
-        total = dramas
-        dramas = total[offset: offset + DRAMAS_PER_PAGE]
 
     if not dramas:
         text = "❌ Tidak ada hasil."
@@ -194,25 +215,19 @@ async def _show_list(
         kb = _drama_list_kb(dramas, mode=mode, offset=offset, query=query)
 
     if edit:
-        try:
-            await target.edit_text(text, parse_mode="HTML", reply_markup=kb)
-        except Exception:
-            try:
-                await target.edit_caption(text, parse_mode="HTML", reply_markup=kb)
-            except Exception:
-                await target.answer(text, parse_mode="HTML", reply_markup=kb)
+        await _edit_safe(target, text, kb)
     else:
         await target.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║               MAIN COMMAND: /melolo                     ║
+# ║               MAIN COMMANDS & CALLBACKS                 ║
 # ╚══════════════════════════════════════════════════════════╝
 
 @router.message(Command("melolo"))
-async def cmd_melolo(message: Message, state: FSMContext) -> None:
-    """Entry point: /melolo — Tampilkan menu utama."""
-    await state.clear()
+async def cmd_melolo(message: Message, state: FSMContext, bot: Bot) -> None:
+    """Cleanup chat dan tampilkan menu."""
+    await perform_cleanup(bot, state, message.chat.id)
     text = (
         "🎭 <b>Melolo Drama</b>\n\n"
         "Selamat datang! Pilih kategori drama favoritmu:\n\n"
@@ -221,16 +236,13 @@ async def cmd_melolo(message: Message, state: FSMContext) -> None:
         "🆕 <b>Latest</b> — Rilis terbaru\n"
         "🔍 <b>Search</b> — Cari judul drama"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=_main_menu_kb())
+    res = await message.answer(text, parse_mode="HTML", reply_markup=_main_menu_kb())
+    await add_to_cleanup(state, res.message_id)
 
-
-# ╔══════════════════════════════════════════════════════════╗
-# ║               CALLBACK: MENU HOME                       ║
-# ╚══════════════════════════════════════════════════════════╝
 
 @router.callback_query(F.data == "ml:home")
-async def cb_home(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
+async def cb_home(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    await perform_cleanup(bot, state, callback.message.chat.id)
     text = (
         "🎭 <b>Melolo Drama</b>\n\n"
         "Pilih kategori drama favoritmu:\n\n"
@@ -239,24 +251,13 @@ async def cb_home(callback: CallbackQuery, state: FSMContext) -> None:
         "🆕 <b>Latest</b> — Rilis terbaru\n"
         "🔍 <b>Search</b> — Cari judul drama"
     )
-    try:
-        await callback.message.edit_text(
-            text, parse_mode="HTML", reply_markup=_main_menu_kb()
-        )
-    except Exception:
-        await callback.message.answer(
-            text, parse_mode="HTML", reply_markup=_main_menu_kb()
-        )
     await callback.answer()
+    res = await callback.message.answer(text, parse_mode="HTML", reply_markup=_main_menu_kb())
+    await add_to_cleanup(state, res.message_id)
 
-
-# ╔══════════════════════════════════════════════════════════╗
-# ║               CALLBACK: LIST (foryou/trending/latest)   ║
-# ╚══════════════════════════════════════════════════════════╝
 
 @router.callback_query(F.data.regexp(r"^ml:(foryou|trending|latest):(\d+)$"))
 async def cb_list(callback: CallbackQuery) -> None:
-    """Tampilkan list drama berdasarkan mode & offset."""
     parts = callback.data.split(":")
     mode = parts[1]
     offset = int(parts[2])
@@ -264,183 +265,153 @@ async def cb_list(callback: CallbackQuery) -> None:
     await _show_list(callback.message, mode=mode, offset=offset, edit=True)
 
 
-# ╔══════════════════════════════════════════════════════════╗
-# ║               CALLBACK: SEARCH                          ║
-# ╚══════════════════════════════════════════════════════════╝
-
 @router.callback_query(F.data == "ml:search")
 async def cb_search_prompt(callback: CallbackQuery, state: FSMContext) -> None:
-    """Minta user input keyword pencarian."""
     await callback.answer()
     await state.set_state(MeloloState.waiting_search)
-    try:
-        await callback.message.edit_text(
-            "🔍 <b>Cari Drama</b>\n\nMasukkan kata kunci pencarian:",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardBuilder()
-            .row(InlineKeyboardButton(text="❌ Batal", callback_data="ml:home"))
-            .as_markup(),
-        )
-    except Exception:
-        await callback.message.answer(
-            "🔍 <b>Cari Drama</b>\n\nMasukkan kata kunci pencarian:",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardBuilder()
-            .row(InlineKeyboardButton(text="❌ Batal", callback_data="ml:home"))
-            .as_markup(),
-        )
+    await callback.message.edit_text(
+        "🔍 <b>Cari Drama</b>\n\nMasukkan kata kunci pencarian:",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardBuilder()
+        .row(InlineKeyboardButton(text="❌ Batal", callback_data="ml:home"))
+        .as_markup(),
+    )
 
 
 @router.message(MeloloState.waiting_search)
-async def handle_search_query(message: Message, state: FSMContext) -> None:
-    """Terima keyword dan tampilkan hasil pencarian."""
+async def handle_search_query(message: Message, state: FSMContext, bot: Bot) -> None:
     query = (message.text or "").strip()
     await state.clear()
+    
+    # Cleanup call
+    await perform_cleanup(bot, state, message.chat.id)
 
     if not query:
-        await message.answer("❌ Kata kunci tidak boleh kosong.", reply_markup=_main_menu_kb())
+        res = await message.answer("❌ Kata kunci tidak boleh kosong.", reply_markup=_main_menu_kb())
+        await add_to_cleanup(state, res.message_id)
         return
 
-    await message.answer("🔍 Mencari drama...")
-    await _show_list(message, mode="search", offset=0, query=query, edit=False)
+    res = await message.answer(f"🔍 Mencari drama: {query}...")
+    await add_to_cleanup(state, res.message_id)
+    await _show_list(res, mode="search", offset=0, query=query, edit=True)
 
 
 @router.callback_query(F.data.regexp(r"^ml:search:(\d+):(.+)$"))
 async def cb_search_paginate(callback: CallbackQuery) -> None:
-    """Pagination hasil pencarian."""
     parts = callback.data.split(":", 3)
     offset = int(parts[2])
-    query = parts[3] if len(parts) > 3 else ""
+    query = parts[3]
     await callback.answer("⏳ Memuat...")
     await _show_list(callback.message, mode="search", offset=offset, query=query, edit=True)
 
 
-# ╔══════════════════════════════════════════════════════════╗
-# ║               CALLBACK: BACK (list navigation)          ║
-# ╚══════════════════════════════════════════════════════════╝
-
-@router.callback_query(F.data.startswith("ml:back:"))
-async def cb_back(callback: CallbackQuery) -> None:
-    """Kembali ke list sebelumnya."""
-    # back_data format: mode:offset:query
-    back_data = callback.data[len("ml:back:"):]
-    parts = back_data.split(":", 2)
-    mode = parts[0] if len(parts) > 0 else "foryou"
-    offset = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    query = parts[2] if len(parts) > 2 else ""
-    await callback.answer("⏳ Kembali...")
-    await _show_list(callback.message, mode=mode, offset=offset, query=query, edit=True)
-
-
-# ╔══════════════════════════════════════════════════════════╗
-# ║               CALLBACK: DETAIL                          ║
-# ╚══════════════════════════════════════════════════════════╝
-
 @router.callback_query(F.data.startswith("ml:detail:"))
 async def cb_detail(callback: CallbackQuery) -> None:
-    """Tampilkan detail drama beserta daftar episode."""
-    # Format: ml:detail:{book_id}:{mode}:{offset}:{query}
     raw = callback.data[len("ml:detail:"):]
     parts = raw.split(":", 1)
     book_id = parts[0]
     back_data = parts[1] if len(parts) > 1 else "foryou:0:"
 
     await callback.answer("⏳ Memuat detail...")
-
     detail = await fetch_melolo_detail(book_id)
     if not detail:
-        await callback.message.edit_text(
-            "❌ Gagal mengambil data detail drama.",
-            reply_markup=InlineKeyboardBuilder()
-            .row(InlineKeyboardButton(text="🔙 Kembali", callback_data=f"ml:back:{back_data}"))
-            .as_markup(),
-        )
+        await callback.message.edit_text("❌ Gagal.")
         return
 
     title = detail.get("series_title") or detail.get("book_name") or "No Title"
     desc = detail.get("series_intro") or detail.get("abstract") or "Tidak ada deskripsi."
     video_list = detail.get("video_list") or []
 
-    # Truncate desc
-    if len(desc) > 300:
-        desc = desc[:300] + "..."
-
-    ep_count = len(video_list)
-    text = (
-        f"📖 <b>{title}</b>\n\n"
-        f"📄 {desc}\n\n"
-        f"🎬 <b>Episode:</b> {ep_count} episode tersedia\n"
-    )
-
-    if not video_list:
-        text += "\n❌ Tidak ada episode tersedia."
-
-    kb = _detail_kb(book_id, video_list, back_data)
-
-    try:
-        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    except Exception:
-        try:
-            await callback.message.edit_caption(text, parse_mode="HTML", reply_markup=kb)
-        except Exception:
-            await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    text = f"📖 <b>{title}</b>\n\n📄 {desc[:300]}...\n\n🎬 <b>Daftar Episode:</b>"
+    kb = _player_kb(book_id, video_list, "", back_data, 0)
+    
+    await _edit_safe(callback.message, text, kb)
 
 
-# ╔══════════════════════════════════════════════════════════╗
-# ║               CALLBACK: STREAM                          ║
-# ╚══════════════════════════════════════════════════════════╝
+@router.callback_query(F.data.startswith("ml:ep_page:"))
+async def cb_ep_page(callback: CallbackQuery) -> None:
+    # Format: ml:ep_page:{book_id}:{current_vid}:{back_data}:{ep_page}
+    parts = callback.data.split(":", 5)
+    book_id = parts[2]
+    current_vid = parts[3]
+    back_data = parts[4]
+    ep_page = int(parts[5])
+
+    detail = await fetch_melolo_detail(book_id)
+    video_list = detail.get("video_list", []) if detail else []
+    
+    kb = _player_kb(book_id, video_list, current_vid, back_data, ep_page)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+    await callback.answer()
+
 
 @router.callback_query(F.data.startswith("ml:stream:"))
-async def cb_stream(callback: CallbackQuery) -> None:
-    """Ambil link stream dan tampilkan ke user."""
-    # Format: ml:stream:{video_id}:{book_id}:{back_data}
-    raw = callback.data[len("ml:stream:"):]
-    parts = raw.split(":", 2)
-    video_id = parts[0]
-    book_id = parts[1] if len(parts) > 1 else ""
-    back_data = parts[2] if len(parts) > 2 else "foryou:0:"
+async def cb_stream(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    """Download video dari Melolo dan kirim file langsung."""
+    # Format: ml:stream:{video_id}:{book_id}:{back_data}:{ep_page}
+    parts = callback.data.split(":")
+    video_id = parts[2]
+    book_id = parts[3]
+    back_data = parts[4]
+    ep_page = int(parts[5]) if len(parts) > 5 else 0
 
-    await callback.answer("⏳ Memuat stream...")
-
+    await callback.answer("⏳ Menyiapkan video...")
+    
+    # 1. Ambil detail & link stream
+    detail = await fetch_melolo_detail(book_id)
     stream_data = await fetch_melolo_stream(video_id)
-    if not stream_data:
-        await callback.message.edit_text(
-            "❌ Gagal mengambil data stream.",
-            reply_markup=_stream_kb(book_id, back_data),
-        )
+    
+    if not detail or not stream_data:
+        await callback.message.edit_text("❌ Gagal.")
         return
 
-    url = (
-        stream_data.get("main_url")
-        or stream_data.get("backup_url")
-        or stream_data.get("url")
-        or stream_data.get("video_url")
-    )
+    title = detail.get("series_title", "Drama")
+    video_list = detail.get("video_list", [])
+    current_ep_idx = "0"
+    for v in video_list:
+        if v.get("vid") == video_id:
+            current_ep_idx = v.get("vid_index")
+            break
 
+    url = stream_data.get("main_url") or stream_data.get("url")
     if not url:
-        await callback.message.edit_text(
-            "❌ Link stream tidak ditemukan.",
-            reply_markup=_stream_kb(book_id, back_data),
-        )
+        await callback.message.edit_text("❌ Link stream tidak ditemukan.")
         return
 
-    text = (
-        f"🎬 <b>Streaming</b>\n\n"
-        f"🍿 Selamat menonton!\n\n"
-        f"<a href='{url}'>▶️ Tonton Sekarang</a>"
+    # 2. UI Cleaning: Beritahu user sedang download
+    wait_msg = await callback.message.answer(f"📥 <b>Downloading Episode {current_ep_idx}...</b>\n\n<i>Mohon tunggu, video sedang diproses oleh bot.</i>", parse_mode="HTML")
+    await perform_cleanup(bot, state, callback.message.chat.id)
+    await add_to_cleanup(state, wait_msg.message_id)
+
+    # 3. Download
+    filename = f"melolo_{video_id}"
+    video_path = await download_generic_video(url, filename)
+    
+    if not video_path:
+        await wait_msg.edit_text("❌ Gagal mendownload video. Silakan coba link cadangan atau episode lain.")
+        return
+
+    # 4. Create Keyboard & Send
+    kb = _player_kb(book_id, video_list, video_id, back_data, ep_page)
+    caption = (
+        f"🎬 <b>{title}</b>\n"
+        f"▶️ Episode {current_ep_idx}\n\n"
+        f"🍿 Selamat menonton langsung dari bot!"
     )
 
     try:
-        await callback.message.edit_text(
-            text,
+        res = await bot.send_video(
+            chat_id=callback.message.chat.id,
+            video=FSInputFile(video_path),
+            caption=caption,
             parse_mode="HTML",
-            reply_markup=_stream_kb(book_id, back_data),
-            disable_web_page_preview=False,
+            reply_markup=kb
         )
-    except Exception:
-        await callback.message.answer(
-            text,
-            parse_mode="HTML",
-            reply_markup=_stream_kb(book_id, back_data),
-            disable_web_page_preview=False,
-        )
+        await add_to_cleanup(state, res.message_id)
+        # Hapus sisa file & pesan "Downloading"
+        await bot.delete_message(callback.message.chat.id, wait_msg.message_id)
+        if os.path.exists(video_path): os.remove(video_path)
+    except Exception as e:
+        logger.error("Gagal kirim video: %s", e)
+        await wait_msg.edit_text(f"❌ Terjadi kesalahan saat mengirim video.\n<code>{str(e)[:100]}</code>")
+
