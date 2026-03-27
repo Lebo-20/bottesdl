@@ -1,15 +1,20 @@
 """
-Handlers — Melolo API
-Menangani navigasi untuk Melolo API.
+Handlers — Melolo API (Netflix-style Interactive Bot)
+Navigasi penuh berbasis inline keyboard, pagination, editMessage.
 """
 
 import logging
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, URLInputFile, InlineKeyboardButton
+from aiogram.types import (
+    CallbackQuery,
+    Message,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command
 
 from services.melolo import (
     fetch_melolo_foryou,
@@ -19,387 +24,423 @@ from services.melolo import (
     fetch_melolo_detail,
     fetch_melolo_stream,
 )
-from keyboards.inline import (
-    melolo_menu_keyboard,
-    melolo_list_keyboard,
-    back_to_home_keyboard,
-)
-from config import BANNER_URL
 
 router = Router(name="melolo")
 logger = logging.getLogger(__name__)
 
-class MeloloSearchState(StatesGroup):
-    waiting_for_query = State()
+DRAMAS_PER_PAGE = 5  # Jumlah drama per halaman
 
-@router.callback_query(F.data == "melolo:home")
-async def cb_melolo_home(callback: CallbackQuery) -> None:
-    """Kembali ke menu Melolo."""
-    logger.info("User %s → Menu Melolo", callback.from_user.id)
-    
-    welcome_text = (
-        "🎭 <b>Melolo Drama</b>\n\n"
-        "Temukan drama terbaik khusus untukmu! ✨\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "🔥 Trending & Terbaru setiap hari\n"
-        "🎬 Koleksi lengkap & update cepat\n"
-        "🍿 Nonton nyaman tanpa ribet\n"
-        "━━━━━━━━━━━━━━━━━━━━"
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║                   FSM STATES                            ║
+# ╚══════════════════════════════════════════════════════════╝
+
+class MeloloState(StatesGroup):
+    waiting_search = State()  # Menunggu input keyword pencarian
+
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║               KEYBOARD BUILDERS                         ║
+# ╚══════════════════════════════════════════════════════════╝
+
+def _main_menu_kb() -> InlineKeyboardMarkup:
+    """Menu utama Melolo."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🎯 For You", callback_data="ml:foryou:0"),
+        InlineKeyboardButton(text="🔥 Trending", callback_data="ml:trending:0"),
     )
+    builder.row(
+        InlineKeyboardButton(text="🆕 Latest", callback_data="ml:latest:0"),
+        InlineKeyboardButton(text="🔍 Search", callback_data="ml:search"),
+    )
+    return builder.as_markup()
 
+
+def _drama_list_kb(
+    dramas: list,
+    mode: str,
+    offset: int,
+    query: str = "",
+) -> InlineKeyboardMarkup:
+    """Keyboard list drama dengan tombol detail & navigasi."""
+    builder = InlineKeyboardBuilder()
+
+    # Tombol detail per drama (satu baris per drama)
+    for i, d in enumerate(dramas, offset + 1):
+        title = (d.get("name") or "No Title")[:40]
+        book_id = d.get("id", "")
+        back_data = f"{mode}:{offset}:{query}"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{i}. {title}",
+                callback_data=f"ml:detail:{book_id}:{back_data}",
+            )
+        )
+
+    # Navigasi Prev / Next
+    nav = []
+    if offset > 0:
+        prev_offset = max(0, offset - DRAMAS_PER_PAGE)
+        nav.append(
+            InlineKeyboardButton(
+                text="⬅️ Prev",
+                callback_data=f"ml:{mode}:{prev_offset}:{query}",
+            )
+        )
+    if len(dramas) >= DRAMAS_PER_PAGE:
+        next_offset = offset + DRAMAS_PER_PAGE
+        nav.append(
+            InlineKeyboardButton(
+                text="➡️ Next",
+                callback_data=f"ml:{mode}:{next_offset}:{query}",
+            )
+        )
+
+    if nav:
+        builder.row(*nav)
+
+    builder.row(
+        InlineKeyboardButton(text="🏠 Menu Melolo", callback_data="ml:home")
+    )
+    return builder.as_markup()
+
+
+def _detail_kb(book_id: str, video_list: list, back_data: str) -> InlineKeyboardMarkup:
+    """Keyboard detail drama dengan tombol tonton per episode."""
+    builder = InlineKeyboardBuilder()
+
+    for vid_item in video_list[:20]:
+        v_id = vid_item.get("vid")
+        v_idx = vid_item.get("vid_index")
+        if v_id and v_idx is not None:
+            builder.add(
+                InlineKeyboardButton(
+                    text=f"▶️ Ep {v_idx}",
+                    callback_data=f"ml:stream:{v_id}:{book_id}:{back_data}",
+                )
+            )
+    builder.adjust(3)
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Kembali",
+            callback_data=f"ml:back:{back_data}",
+        )
+    )
+    return builder.as_markup()
+
+
+def _stream_kb(book_id: str, back_data: str) -> InlineKeyboardMarkup:
+    """Keyboard setelah stream — kembali ke detail."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Kembali ke Detail",
+            callback_data=f"ml:detail:{book_id}:{back_data}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏠 Menu Melolo", callback_data="ml:home")
+    )
+    return builder.as_markup()
+
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║               HELPER: Ambil & Tampilkan List            ║
+# ╚══════════════════════════════════════════════════════════╝
+
+async def _show_list(
+    target,  # Message atau CallbackQuery.message
+    mode: str,
+    offset: int,
+    query: str = "",
+    edit: bool = True,
+) -> None:
+    """Ambil data sesuai mode dan render list ke chat."""
+
+    # Ambil data dari API
+    dramas = []
+    if mode == "foryou":
+        dramas = await fetch_melolo_foryou(offset=offset)
+        header = "🎯 <b>Drama Untuk Anda</b>"
+    elif mode == "trending":
+        dramas = await fetch_melolo_trending()
+        header = "🔥 <b>Drama Trending</b>"
+    elif mode == "latest":
+        dramas = await fetch_melolo_latest()
+        header = "🆕 <b>Drama Terbaru</b>"
+    elif mode == "search":
+        dramas = await fetch_melolo_search(query, limit=DRAMAS_PER_PAGE, offset=offset)
+        header = f"🔍 <b>Hasil Pencarian:</b> {query}"
+    else:
+        dramas = []
+        header = "🎬 <b>Drama</b>"
+
+    # Pagination slice untuk trending/latest (sudah semua di-load)
+    if mode in ("trending", "latest"):
+        total = dramas
+        dramas = total[offset: offset + DRAMAS_PER_PAGE]
+
+    if not dramas:
+        text = "❌ Tidak ada hasil."
+        kb = _main_menu_kb()
+    else:
+        numbered = "\n".join(
+            f"{offset + i + 1}. {d.get('name', 'No Title')}"
+            for i, d in enumerate(dramas)
+        )
+        text = f"{header}\n\n🎬 Daftar Drama:\n\n{numbered}\n\n📖 Klik judul untuk melihat detail."
+        kb = _drama_list_kb(dramas, mode=mode, offset=offset, query=query)
+
+    if edit:
+        try:
+            await target.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            try:
+                await target.edit_caption(text, parse_mode="HTML", reply_markup=kb)
+            except Exception:
+                await target.answer(text, parse_mode="HTML", reply_markup=kb)
+    else:
+        await target.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║               MAIN COMMAND: /melolo                     ║
+# ╚══════════════════════════════════════════════════════════╝
+
+@router.message(Command("melolo"))
+async def cmd_melolo(message: Message, state: FSMContext) -> None:
+    """Entry point: /melolo — Tampilkan menu utama."""
+    await state.clear()
+    text = (
+        "🎭 <b>Melolo Drama</b>\n\n"
+        "Selamat datang! Pilih kategori drama favoritmu:\n\n"
+        "🎯 <b>For You</b> — Rekomendasi spesial untukmu\n"
+        "🔥 <b>Trending</b> — Drama yang lagi viral\n"
+        "🆕 <b>Latest</b> — Rilis terbaru\n"
+        "🔍 <b>Search</b> — Cari judul drama"
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=_main_menu_kb())
+
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║               CALLBACK: MENU HOME                       ║
+# ╚══════════════════════════════════════════════════════════╝
+
+@router.callback_query(F.data == "ml:home")
+async def cb_home(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    text = (
+        "🎭 <b>Melolo Drama</b>\n\n"
+        "Pilih kategori drama favoritmu:\n\n"
+        "🎯 <b>For You</b> — Rekomendasi spesial untukmu\n"
+        "🔥 <b>Trending</b> — Drama yang lagi viral\n"
+        "🆕 <b>Latest</b> — Rilis terbaru\n"
+        "🔍 <b>Search</b> — Cari judul drama"
+    )
     try:
-        await callback.message.edit_caption(
-            caption=welcome_text,
-            parse_mode="HTML",
-            reply_markup=melolo_menu_keyboard(),
+        await callback.message.edit_text(
+            text, parse_mode="HTML", reply_markup=_main_menu_kb()
         )
     except Exception:
         await callback.message.answer(
-            welcome_text,
-            parse_mode="HTML",
-            reply_markup=melolo_menu_keyboard(),
+            text, parse_mode="HTML", reply_markup=_main_menu_kb()
         )
     await callback.answer()
 
-@router.callback_query(F.data.startswith("melolo:foryou:"))
-async def cb_melolo_foryou(callback: CallbackQuery) -> None:
-    """Menampilkan drama For You Melolo."""
-    offset = int(callback.data.split(":")[2])
-    logger.info("User %s → Melolo For You offset %d", callback.from_user.id, offset)
-    await callback.answer("⏳ Memuat drama untukmu...")
 
-    dramas = await fetch_melolo_foryou(offset=offset)
-    if not dramas:
-        await callback.message.answer("😔 Tidak ada drama tersedia.")
-        return
+# ╔══════════════════════════════════════════════════════════╗
+# ║               CALLBACK: LIST (foryou/trending/latest)   ║
+# ╚══════════════════════════════════════════════════════════╝
 
-    text = "🎬 <b>Drama Untuk Anda (Melolo)</b>\n\n👇 Pilih drama:"
-    keyboard = melolo_list_keyboard(dramas, offset=offset, nav_prefix="melolo:foryou:")
-    
-    await callback.message.edit_caption(
-        caption=text,
-        parse_mode="HTML",
-        reply_markup=keyboard,
-    )
+@router.callback_query(F.data.regexp(r"^ml:(foryou|trending|latest):(\d+)$"))
+async def cb_list(callback: CallbackQuery) -> None:
+    """Tampilkan list drama berdasarkan mode & offset."""
+    parts = callback.data.split(":")
+    mode = parts[1]
+    offset = int(parts[2])
+    await callback.answer("⏳ Memuat...")
+    await _show_list(callback.message, mode=mode, offset=offset, edit=True)
 
-@router.callback_query(F.data == "melolo:latest")
-async def cb_melolo_latest(callback: CallbackQuery) -> None:
-    """Menampilkan drama terbaru Melolo."""
-    logger.info("User %s → Melolo Terbaru", callback.from_user.id)
-    await callback.answer("⏳ Memuat drama terbaru...")
 
-    dramas = await fetch_melolo_latest()
-    if not dramas:
-        await callback.message.answer("😔 Tidak ada drama terbaru.")
-        return
+# ╔══════════════════════════════════════════════════════════╗
+# ║               CALLBACK: SEARCH                          ║
+# ╚══════════════════════════════════════════════════════════╝
 
-    text = "✨ <b>Drama Terbaru (Melolo)</b>\n\n👇 Pilih drama:"
-    keyboard = melolo_list_keyboard(dramas, has_more=False)
-    
-    await callback.message.edit_caption(
-        caption=text,
-        parse_mode="HTML",
-        reply_markup=keyboard,
-    )
-
-@router.callback_query(F.data == "melolo:trending")
-async def cb_melolo_trending(callback: CallbackQuery) -> None:
-    """Menampilkan drama trending Melolo."""
-    logger.info("User %s → Melolo Trending", callback.from_user.id)
-    await callback.answer("⏳ Memuat drama trending...")
-
-    dramas = await fetch_melolo_trending()
-    if not dramas:
-        await callback.message.answer("😔 Tidak ada drama trending.")
-        return
-
-    text = "🔥 <b>Drama Trending (Melolo)</b>\n\n👇 Pilih drama:"
-    keyboard = melolo_list_keyboard(dramas, has_more=False)
-    
-    await callback.message.edit_caption(
-        caption=text,
-        parse_mode="HTML",
-        reply_markup=keyboard,
-    )
-
-@router.callback_query(F.data == "melolo:search")
-async def cb_melolo_search_start(callback: CallbackQuery, state: FSMContext) -> None:
-    """Memulai pencarian Melolo."""
+@router.callback_query(F.data == "ml:search")
+async def cb_search_prompt(callback: CallbackQuery, state: FSMContext) -> None:
+    """Minta user input keyword pencarian."""
     await callback.answer()
-    await callback.message.answer("🔍 <b>Ketik judul drama Melolo yang dicari:</b>", parse_mode="HTML")
-    await state.set_state(MeloloSearchState.waiting_for_query)
+    await state.set_state(MeloloState.waiting_search)
+    try:
+        await callback.message.edit_text(
+            "🔍 <b>Cari Drama</b>\n\nMasukkan kata kunci pencarian:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardBuilder()
+            .row(InlineKeyboardButton(text="❌ Batal", callback_data="ml:home"))
+            .as_markup(),
+        )
+    except Exception:
+        await callback.message.answer(
+            "🔍 <b>Cari Drama</b>\n\nMasukkan kata kunci pencarian:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardBuilder()
+            .row(InlineKeyboardButton(text="❌ Batal", callback_data="ml:home"))
+            .as_markup(),
+        )
 
-@router.message(MeloloSearchState.waiting_for_query)
-async def handle_melolo_search(message: Message, state: FSMContext) -> None:
-    """Menangani query pencarian Melolo."""
-    query = message.text
-    logger.info("User %s mencari Melolo: %s", message.from_user.id, query)
+
+@router.message(MeloloState.waiting_search)
+async def handle_search_query(message: Message, state: FSMContext) -> None:
+    """Terima keyword dan tampilkan hasil pencarian."""
+    query = (message.text or "").strip()
     await state.clear()
-    
-    dramas = await fetch_melolo_search(query)
-    if not dramas:
-        await message.answer(f"😔 Tidak ditemukan drama Melolo dengan kata kunci: {query}")
+
+    if not query:
+        await message.answer("❌ Kata kunci tidak boleh kosong.", reply_markup=_main_menu_kb())
         return
 
-    text = f"🔍 <b>Hasil Pencarian Melolo:</b> {query}\n\n👇 Pilih drama:"
-    keyboard = melolo_list_keyboard(dramas, has_more=False)
-    
-    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+    await message.answer("🔍 Mencari drama...")
+    await _show_list(message, mode="search", offset=0, query=query, edit=False)
 
-@router.callback_query(F.data.startswith("melolo_detail:"))
-async def cb_melolo_detail(callback: CallbackQuery) -> None:
-    """Menampilkan detail drama Melolo."""
-    book_id = callback.data.split(":")[1]
-    logger.info("User %s → Detail Melolo %s", callback.from_user.id, book_id)
+
+@router.callback_query(F.data.regexp(r"^ml:search:(\d+):(.+)$"))
+async def cb_search_paginate(callback: CallbackQuery) -> None:
+    """Pagination hasil pencarian."""
+    parts = callback.data.split(":", 3)
+    offset = int(parts[2])
+    query = parts[3] if len(parts) > 3 else ""
+    await callback.answer("⏳ Memuat...")
+    await _show_list(callback.message, mode="search", offset=offset, query=query, edit=True)
+
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║               CALLBACK: BACK (list navigation)          ║
+# ╚══════════════════════════════════════════════════════════╝
+
+@router.callback_query(F.data.startswith("ml:back:"))
+async def cb_back(callback: CallbackQuery) -> None:
+    """Kembali ke list sebelumnya."""
+    # back_data format: mode:offset:query
+    back_data = callback.data[len("ml:back:"):]
+    parts = back_data.split(":", 2)
+    mode = parts[0] if len(parts) > 0 else "foryou"
+    offset = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    query = parts[2] if len(parts) > 2 else ""
+    await callback.answer("⏳ Kembali...")
+    await _show_list(callback.message, mode=mode, offset=offset, query=query, edit=True)
+
+
+# ╔══════════════════════════════════════════════════════════╗
+# ║               CALLBACK: DETAIL                          ║
+# ╚══════════════════════════════════════════════════════════╝
+
+@router.callback_query(F.data.startswith("ml:detail:"))
+async def cb_detail(callback: CallbackQuery) -> None:
+    """Tampilkan detail drama beserta daftar episode."""
+    # Format: ml:detail:{book_id}:{mode}:{offset}:{query}
+    raw = callback.data[len("ml:detail:"):]
+    parts = raw.split(":", 1)
+    book_id = parts[0]
+    back_data = parts[1] if len(parts) > 1 else "foryou:0:"
+
     await callback.answer("⏳ Memuat detail...")
 
     detail = await fetch_melolo_detail(book_id)
     if not detail:
-        await callback.message.answer("😔 Gagal memuat detail drama.")
+        await callback.message.edit_text(
+            "❌ Gagal mengambil data detail drama.",
+            reply_markup=InlineKeyboardBuilder()
+            .row(InlineKeyboardButton(text="🔙 Kembali", callback_data=f"ml:back:{back_data}"))
+            .as_markup(),
+        )
         return
 
-    # Melolo detail structure: data.video_data
-    title = detail.get("series_title", "No Title")
-    desc = detail.get("series_intro", "Tidak ada deskripsi.")
-    cover = detail.get("series_cover")
-    video_list = detail.get("video_list", [])
-    
+    title = detail.get("series_title") or detail.get("book_name") or "No Title"
+    desc = detail.get("series_intro") or detail.get("abstract") or "Tidak ada deskripsi."
+    video_list = detail.get("video_list") or []
+
+    # Truncate desc
+    if len(desc) > 300:
+        desc = desc[:300] + "..."
+
+    ep_count = len(video_list)
     text = (
-        f"🎬 <b>{title}</b>\n\n"
-        f"📝 {desc}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📺 <b>Daftar Episode:</b>\n"
+        f"📖 <b>{title}</b>\n\n"
+        f"📄 {desc}\n\n"
+        f"🎬 <b>Episode:</b> {ep_count} episode tersedia\n"
     )
 
-    builder = InlineKeyboardBuilder()
-    for vid_item in video_list[:10]: # Limit to 10 for inline buttons
-        v_id = vid_item.get("vid")
-        v_idx = vid_item.get("vid_index")
-        if v_id and v_idx:
-            builder.add(InlineKeyboardButton(text=f"Eps {v_idx}", callback_data=f"melolo_stream:{v_id}"))
-    
-    builder.adjust(5)
-    builder.row(InlineKeyboardButton(text="🔙 Kembali", callback_data="melolo:home"))
-    
-    # Add full episode list in text for slash command reference
-    if len(video_list) > 10:
-        text += "<i>(Gunakan perintah /melolo detail untuk list lengkap)</i>"
-    elif not video_list:
-        text += "Tidak ada episode tersedia."
+    if not video_list:
+        text += "\n❌ Tidak ada episode tersedia."
 
-    if cover:
+    kb = _detail_kb(book_id, video_list, back_data)
+
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
         try:
-            await callback.message.delete()
-            await callback.message.answer_photo(
-                photo=cover,
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=builder.as_markup()
-            )
+            await callback.message.edit_caption(text, parse_mode="HTML", reply_markup=kb)
         except Exception:
-            await callback.message.edit_caption(
-                caption=text,
-                parse_mode="HTML",
-                reply_markup=builder.as_markup()
-            )
-    else:
-        await callback.message.edit_caption(
-            caption=text,
-            parse_mode="HTML",
-            reply_markup=builder.as_markup()
-        )
-
-@router.callback_query(F.data.startswith("melolo_stream:"))
-async def cb_melolo_stream(callback: CallbackQuery) -> None:
-    """Menangani stream Melolo."""
-    video_id = callback.data.split(":")[1]
-    logger.info("User %s → Stream Melolo %s", callback.from_user.id, video_id)
-    await callback.answer("⏳ Memuat link stream...")
-
-    stream_data = await fetch_melolo_stream(video_id)
-    if not stream_data:
-        await callback.message.answer("😔 Gagal memuat link stream.")
-        return
-
-    # Melolo stream structure: data.main_url or data.backup_url
-    url = stream_data.get("main_url") or stream_data.get("backup_url")
-    if not url:
-        await callback.message.answer("😔 Link stream tidak ditemukan.")
-        return
-
-    await callback.message.answer(f"🍿 <b>Link Nonton:</b>\n<a href='{url}'>Klik di sini untuk menonton</a>", parse_mode="HTML")
+            await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 # ╔══════════════════════════════════════════════════════════╗
-# ║                   SLASH COMMANDS                        ║
+# ║               CALLBACK: STREAM                          ║
 # ╚══════════════════════════════════════════════════════════╝
 
-@router.message(Command("melolo"))
-async def cmd_melolo_base(message: Message, command: CommandObject) -> None:
-    """Handler utama untuk perintah /melolo."""
-    sub = command.command
-    args = command.args or ""
-    
-    # Karena Command() menangkap /melolo, sub akan selalu 'melolo'
-    # Kita perlu parse argumen pertama sebagai sub-command
-    parts = args.split()
-    if not parts:
-        # Jika cuma /melolo tanpa argumen, tampilkan help atau menu
-        text = (
-            "🚀 <b>Melolo Bot — Panduan Penggunaan</b>\n\n"
-            "• <code>/melolo foryou [offset]</code> — Rekomendasi drama\n"
-            "• <code>/melolo latest</code> — Drama terbaru\n"
-            "• <code>/melolo trending</code> — Drama trending\n"
-            "• <code>/melolo search [query]</code> — Cari drama\n"
-            "• <code>/melolo detail [bookId]</code> — Detail drama\n"
-            "• <code>/melolo stream [videoId]</code> — Nonton drama\n\n"
-            "Gunakan perintah di atas untuk mulai menonton! 🍿"
-        )
-        await message.answer(text, parse_mode="HTML")
-        return
+@router.callback_query(F.data.startswith("ml:stream:"))
+async def cb_stream(callback: CallbackQuery) -> None:
+    """Ambil link stream dan tampilkan ke user."""
+    # Format: ml:stream:{video_id}:{book_id}:{back_data}
+    raw = callback.data[len("ml:stream:"):]
+    parts = raw.split(":", 2)
+    video_id = parts[0]
+    book_id = parts[1] if len(parts) > 1 else ""
+    back_data = parts[2] if len(parts) > 2 else "foryou:0:"
 
-    sub_cmd = parts[0].lower()
-    sub_args = parts[1:]
+    await callback.answer("⏳ Memuat stream...")
 
-    if sub_cmd == "foryou":
-        await cmd_melolo_foryou(message, sub_args)
-    elif sub_cmd == "latest":
-        await cmd_melolo_latest(message)
-    elif sub_cmd == "trending":
-        await cmd_melolo_trending(message)
-    elif sub_cmd == "search":
-        await cmd_melolo_search(message, sub_args)
-    elif sub_cmd == "detail":
-        await cmd_melolo_detail(message, sub_args)
-    elif sub_cmd == "stream":
-        await cmd_melolo_stream(message, sub_args)
-    else:
-        await message.answer("❌ Perintah tidak dikenal. Ketik <code>/melolo</code> untuk bantuan.")
-
-
-async def cmd_melolo_foryou(message: Message, args: list[str]) -> None:
-    offset = int(args[0]) if args and args[0].isdigit() else 20
-    dramas = await fetch_melolo_foryou(offset=offset)
-    
-    if not dramas:
-        await message.answer("😔 Tidak ada drama tersedia.")
-        return
-
-    text = f"🎬 <b>Drama Untuk Anda (Offset: {offset})</b>\n\n"
-    for i, d in enumerate(dramas, 1):
-        text += f"{i}. <b>{d['name']}</b>\n   ID: <code>{d['id']}</code>\n\n"
-    
-    text += "💡 Gunakan: <code>/melolo detail <bookId></code> untuk melihat detail."
-    await message.answer(text, parse_mode="HTML")
-
-
-async def cmd_melolo_latest(message: Message) -> None:
-    dramas = await fetch_melolo_latest()
-    if not dramas:
-        await message.answer("😔 Tidak ada drama terbaru.")
-        return
-
-    text = "✨ <b>Drama Terbaru</b>\n\n"
-    for i, d in enumerate(dramas, 1):
-        text += f"{i}. <b>{d['name']}</b>\n   ID: <code>{d['id']}</code>\n\n"
-    
-    text += "💡 Gunakan: <code>/melolo detail <bookId></code> untuk melihat detail."
-    await message.answer(text, parse_mode="HTML")
-
-
-async def cmd_melolo_trending(message: Message) -> None:
-    dramas = await fetch_melolo_trending()
-    if not dramas:
-        await message.answer("😔 Tidak ada drama trending.")
-        return
-
-    text = "🔥 <b>Drama Trending</b>\n\n"
-    for i, d in enumerate(dramas, 1):
-        text += f"{i}. <b>{d['name']}</b>\n   ID: <code>{d['id']}</code>\n\n"
-    
-    text += "💡 Gunakan: <code>/melolo detail <bookId></code> untuk melihat detail."
-    await message.answer(text, parse_mode="HTML")
-
-
-async def cmd_melolo_search(message: Message, args: list[str]) -> None:
-    if not args:
-        await message.answer("⚠️ Harap masukkan kata kunci! Contoh: <code>/melolo search cinta</code>")
-        return
-    
-    query = " ".join(args)
-    dramas = await fetch_melolo_search(query)
-    
-    if not dramas:
-        await message.answer(f"😔 Drama tidak ditemukan untuk kata kunci: <b>{query}</b>")
-        return
-
-    text = f"🔍 <b>Hasil pencarian \"{query}\":</b>\n\n"
-    for i, d in enumerate(dramas, 1):
-        text += f"{i}. <b>{d['name']}</b>\n   ID: <code>{d['id']}</code>\n\n"
-    
-    text += "💡 Gunakan: <code>/melolo detail <bookId></code> untuk melihat detail."
-    await message.answer(text, parse_mode="HTML")
-
-
-async def cmd_melolo_detail(message: Message, args: list[str]) -> None:
-    if not args:
-        await message.answer("⚠️ Harap masukkan ID Drama! Contoh: <code>/melolo detail 123456</code>")
-        return
-    
-    book_id = args[0]
-    detail = await fetch_melolo_detail(book_id)
-    
-    if not detail:
-        await message.answer("😔 Drama tidak ditemukan atau ID salah.")
-        return
-
-    title = detail.get("series_title", "No Title")
-    desc = detail.get("series_intro", "Tidak ada deskripsi.")
-    video_list = detail.get("video_list", [])
-    
-    text = (
-        f"🎬 <b>{title}</b>\n\n"
-        f"📝 <b>Deskripsi:</b>\n{desc}\n\n"
-        f"📺 <b>Daftar Episode:</b>\n"
-    )
-
-    for v in video_list:
-        text += f"• Episode {v.get('vid_index')}: <code>{v.get('vid')}</code>\n"
-    
-    if not video_list:
-        text += "Tidak ada episode."
-
-    text += f"\n💡 Gunakan: <code>/melolo stream &lt;videoId&gt;</code> untuk menonton."
-    
-    # Handle long text (max 4096 chars)
-    if len(text) > 4000:
-        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
-        for chunk in chunks:
-            await message.answer(chunk, parse_mode="HTML")
-    else:
-        await message.answer(text, parse_mode="HTML")
-
-
-async def cmd_melolo_stream(message: Message, args: list[str]) -> None:
-    if not args:
-        await message.answer("⚠️ Harap masukkan Video ID! Contoh: <code>/melolo stream 789101</code>")
-        return
-    
-    video_id = args[0]
     stream_data = await fetch_melolo_stream(video_id)
-    
     if not stream_data:
-        await message.answer("😔 Stream tidak tersedia.")
+        await callback.message.edit_text(
+            "❌ Gagal mengambil data stream.",
+            reply_markup=_stream_kb(book_id, back_data),
+        )
         return
 
-    url = stream_data.get("main_url") or stream_data.get("backup_url")
+    url = (
+        stream_data.get("main_url")
+        or stream_data.get("backup_url")
+        or stream_data.get("url")
+        or stream_data.get("video_url")
+    )
+
     if not url:
-        await message.answer("😔 Link stream tidak ditemukan.")
+        await callback.message.edit_text(
+            "❌ Link stream tidak ditemukan.",
+            reply_markup=_stream_kb(book_id, back_data),
+        )
         return
 
     text = (
-        f"🍿 <b>Link Streaming:</b>\n"
-        f"<a href='{url}'>Klik di sini untuk menonton</a>\n\n"
-        f"Selamat menonton! ✨"
+        f"🎬 <b>Streaming</b>\n\n"
+        f"🍿 Selamat menonton!\n\n"
+        f"<a href='{url}'>▶️ Tonton Sekarang</a>"
     )
-    await message.answer(text, parse_mode="HTML")
+
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=_stream_kb(book_id, back_data),
+            disable_web_page_preview=False,
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=_stream_kb(book_id, back_data),
+            disable_web_page_preview=False,
+        )
