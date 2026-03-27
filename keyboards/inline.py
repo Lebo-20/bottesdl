@@ -147,8 +147,8 @@ def melolo_list_keyboard(
     builder = InlineKeyboardBuilder()
 
     for drama in dramas:
-        title = drama.get("bookName") or drama.get("name") or "No Title"
-        book_id = drama.get("bookId") or drama.get("id") or ""
+        title = drama.get("name") or "No Title"
+        book_id = drama.get("id") or ""
         builder.row(
             InlineKeyboardButton(
                 text=f"🎬 {title}",

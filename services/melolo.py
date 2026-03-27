@@ -18,6 +18,16 @@ def _headers() -> dict:
     return {"accept": "*/*"}
 
 
+def _normalize_book(raw: dict) -> dict:
+    """Normalize data buku/drama dari API Melolo."""
+    return {
+        "id": raw.get("book_id", ""),
+        "name": raw.get("book_name", "No Title"),
+        "description": raw.get("abstract", "Tidak ada deskripsi."),
+        "cover": raw.get("thumb_url", ""),
+    }
+
+
 async def fetch_melolo_foryou(offset: int = 20) -> List[Dict[str, Any]]:
     """GET /foryou — Mengambil daftar drama untuk Anda."""
     try:
@@ -30,7 +40,9 @@ async def fetch_melolo_foryou(offset: int = 20) -> List[Dict[str, Any]]:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                data = await resp.json()
+                books = data.get("books", [])
+                return [_normalize_book(b) for b in books]
     except Exception as e:
         logger.error("Error fetch melolo foryou: %s", e)
         return []
@@ -46,7 +58,9 @@ async def fetch_melolo_latest() -> List[Dict[str, Any]]:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                data = await resp.json()
+                books = data.get("books", [])
+                return [_normalize_book(b) for b in books]
     except Exception as e:
         logger.error("Error fetch melolo latest: %s", e)
         return []
@@ -62,7 +76,9 @@ async def fetch_melolo_trending() -> List[Dict[str, Any]]:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                data = await resp.json()
+                books = data.get("books", [])
+                return [_normalize_book(b) for b in books]
     except Exception as e:
         logger.error("Error fetch melolo trending: %s", e)
         return []
@@ -80,7 +96,9 @@ async def fetch_melolo_search(query: str, limit: int = 10, offset: int = 0) -> L
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                data = await resp.json()
+                books = data.get("books", [])
+                return [_normalize_book(b) for b in books]
     except Exception as e:
         logger.error("Error fetch melolo search: %s", e)
         return []
