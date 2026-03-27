@@ -158,24 +158,35 @@ async def cb_melolo_detail(callback: CallbackQuery) -> None:
         await callback.message.answer("😔 Gagal memuat detail drama.")
         return
 
-    # Melolo detail structure inference
-    title = detail.get("bookName") or detail.get("name") or "No Title"
-    desc = detail.get("intro") or detail.get("description") or "Tidak ada deskripsi."
-    vid = detail.get("vid") or detail.get("videoId")
-    cover = detail.get("cover") or detail.get("horizontalCover")
+    # Melolo detail structure: data.video_data
+    title = detail.get("series_title", "No Title")
+    desc = detail.get("series_intro", "Tidak ada deskripsi.")
+    cover = detail.get("series_cover")
+    video_list = detail.get("video_list", [])
     
     text = (
         f"🎬 <b>{title}</b>\n\n"
         f"📝 {desc}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📺 <b>Daftar Episode:</b>\n"
     )
 
     builder = InlineKeyboardBuilder()
-    if vid:
-        builder.row(InlineKeyboardButton(text="▶️ Tonton Sekarang", callback_data=f"melolo_stream:{vid}"))
+    for vid_item in video_list[:10]: # Limit to 10 for inline buttons
+        v_id = vid_item.get("vid")
+        v_idx = vid_item.get("vid_index")
+        if v_id and v_idx:
+            builder.add(InlineKeyboardButton(text=f"Eps {v_idx}", callback_data=f"melolo_stream:{v_id}"))
     
+    builder.adjust(5)
     builder.row(InlineKeyboardButton(text="🔙 Kembali", callback_data="melolo:home"))
     
+    # Add full episode list in text for slash command reference
+    if len(video_list) > 10:
+        text += "<i>(Gunakan perintah /melolo detail untuk list lengkap)</i>"
+    elif not video_list:
+        text += "Tidak ada episode tersedia."
+
     if cover:
         try:
             await callback.message.delete()
@@ -210,8 +221,8 @@ async def cb_melolo_stream(callback: CallbackQuery) -> None:
         await callback.message.answer("😔 Gagal memuat link stream.")
         return
 
-    # Stream data structure inference
-    url = stream_data.get("url") or stream_data.get("videoUrl") or stream_data.get("playUrl")
+    # Melolo stream structure: data.main_url or data.backup_url
+    url = stream_data.get("main_url") or stream_data.get("backup_url")
     if not url:
         await callback.message.answer("😔 Link stream tidak ditemukan.")
         return
@@ -342,17 +353,31 @@ async def cmd_melolo_detail(message: Message, args: list[str]) -> None:
         await message.answer("😔 Drama tidak ditemukan atau ID salah.")
         return
 
-    title = detail.get("bookName") or detail.get("name") or "No Title"
-    desc = detail.get("intro") or detail.get("description") or "Tidak ada deskripsi."
-    vid = detail.get("vid") or detail.get("videoId")
+    title = detail.get("series_title", "No Title")
+    desc = detail.get("series_intro", "Tidak ada deskripsi.")
+    video_list = detail.get("video_list", [])
     
     text = (
         f"🎬 <b>{title}</b>\n\n"
         f"📝 <b>Deskripsi:</b>\n{desc}\n\n"
-        f"🆔 <b>Video ID:</b> <code>{vid}</code>\n\n"
-        f"💡 Gunakan: <code>/melolo stream {vid}</code> untuk menonton."
+        f"📺 <b>Daftar Episode:</b>\n"
     )
-    await message.answer(text, parse_mode="HTML")
+
+    for v in video_list:
+        text += f"• Episode {v.get('vid_index')}: <code>{v.get('vid')}</code>\n"
+    
+    if not video_list:
+        text += "Tidak ada episode."
+
+    text += f"\n💡 Gunakan: <code>/melolo stream &lt;videoId&gt;</code> untuk menonton."
+    
+    # Handle long text (max 4096 chars)
+    if len(text) > 4000:
+        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+        for chunk in chunks:
+            await message.answer(chunk, parse_mode="HTML")
+    else:
+        await message.answer(text, parse_mode="HTML")
 
 
 async def cmd_melolo_stream(message: Message, args: list[str]) -> None:
@@ -367,7 +392,7 @@ async def cmd_melolo_stream(message: Message, args: list[str]) -> None:
         await message.answer("😔 Stream tidak tersedia.")
         return
 
-    url = stream_data.get("url") or stream_data.get("videoUrl") or stream_data.get("playUrl")
+    url = stream_data.get("main_url") or stream_data.get("backup_url")
     if not url:
         await message.answer("😔 Link stream tidak ditemukan.")
         return

@@ -40,8 +40,10 @@ async def fetch_melolo_foryou(offset: int = 20) -> List[Dict[str, Any]]:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                data = await resp.json()
-                books = data.get("books", [])
+                json_data = await resp.json()
+                data = json_data.get("data", {})
+                cell = data.get("cell", {})
+                books = cell.get("books", [])
                 return [_normalize_book(b) for b in books]
     except Exception as e:
         logger.error("Error fetch melolo foryou: %s", e)
@@ -96,9 +98,19 @@ async def fetch_melolo_search(query: str, limit: int = 10, offset: int = 0) -> L
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                data = await resp.json()
-                books = data.get("books", [])
-                return [_normalize_book(b) for b in books]
+                json_data = await resp.json()
+                
+                # Struktur search agak berbeda: data -> search_data -> list of {books: [...]}
+                data = json_data.get("data", {})
+                search_data = data.get("search_data", [])
+                
+                all_books = []
+                for item in search_data:
+                    books = item.get("books", [])
+                    for b in books:
+                        all_books.append(_normalize_book(b))
+                
+                return all_books
     except Exception as e:
         logger.error("Error fetch melolo search: %s", e)
         return []
@@ -116,7 +128,9 @@ async def fetch_melolo_detail(book_id: str) -> Optional[Dict[str, Any]]:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                json_data = await resp.json()
+                data = json_data.get("data", {})
+                return data.get("video_data", {})
     except Exception as e:
         logger.error("Error fetch melolo detail: %s", e)
         return None
@@ -134,7 +148,8 @@ async def fetch_melolo_stream(video_id: str) -> Optional[Dict[str, Any]]:
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 resp.raise_for_status()
-                return await resp.json()
+                json_data = await resp.json()
+                return json_data.get("data", {})
     except Exception as e:
         logger.error("Error fetch melolo stream: %s", e)
         return None
