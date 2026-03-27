@@ -1149,3 +1149,8 @@ ConnectionResetError: Cannot write to closing transport
 2026-03-27 01:28:20 | INFO     | handlers.menu — User 5888747846 → Daftar Drama halaman 1
 2026-03-27 01:28:27 | INFO     | handlers.drama — User 5888747846 → Detail Drama 2036732442342907905
 2026-03-27 01:28:33 | INFO     | handlers.drama — User 5888747846 → Episode 1 drama 2036732442342907905
+2026-03-27 12:24:45 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 12:24:45 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 12:28:37 | INFO     | __main__ — 🎬 Dramaku Bot dimulai!
+2026-03-27 12:28:37 | INFO     | __main__ — ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-03-27 12:28:41 | INFO     | handlers.start — User 5888747846 memulai bot

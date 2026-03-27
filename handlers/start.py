@@ -9,13 +9,13 @@ from aiogram.types import Message, URLInputFile
 from aiogram.filters import CommandStart, Command
 
 from config import BANNER_URL
-from keyboards.inline import main_menu_keyboard
+from keyboards.inline import main_menu_keyboard, melolo_menu_keyboard
 
 router = Router(name="start")
 logger = logging.getLogger(__name__)
 
 
-@router.message(CommandStart())
+@router.message(Command("start", "melolo"))
 async def cmd_start(message: Message) -> None:
     """Handler untuk command /start."""
     logger.info("User %s memulai bot", message.from_user.id)
@@ -30,7 +30,19 @@ async def cmd_start(message: Message) -> None:
         "━━━━━━━━━━━━━━━━━━━━"
     )
 
-    keyboard = main_menu_keyboard()
+    is_melolo = message.text.startswith("/melolo")
+    keyboard = melolo_menu_keyboard() if is_melolo else main_menu_keyboard()
+
+    if is_melolo:
+        welcome_text = (
+            "🎭 <b>Melolo Drama</b>\n\n"
+            "Temukan drama terbaik khusus untukmu! ✨\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🔥 Trending & Terbaru setiap hari\n"
+            "🎬 Koleksi lengkap & update cepat\n"
+            "🍿 Nonton nyaman tanpa ribet\n"
+            "━━━━━━━━━━━━━━━━━━━━"
+        )
 
     try:
         banner = URLInputFile(BANNER_URL, filename="dramaku_banner.jpg")
