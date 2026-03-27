@@ -55,6 +55,27 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def melolo_menu_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard utama untuk Melolo API."""
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(text="🔥 Trending", callback_data="melolo:trending"),
+        InlineKeyboardButton(text="✨ Terbaru", callback_data="melolo:latest"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎬 Untuk Anda", callback_data="melolo:foryou:0"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔍 Cari Melolo", callback_data="melolo:search"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home")
+    )
+
+    return builder.as_markup()
+
+
 # ╔══════════════════════════════════════════════════════════╗
 # ║                  DRAMA LIST                             ║
 # ╚══════════════════════════════════════════════════════════╝
@@ -112,6 +133,43 @@ def drama_list_keyboard(
     builder.row(
         InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home")
     )
+
+    return builder.as_markup()
+
+
+def melolo_list_keyboard(
+    dramas: list[dict],
+    offset: int = 0,
+    has_more: bool = True,
+    nav_prefix: str = "melolo:foryou:",
+) -> InlineKeyboardMarkup:
+    """Keyboard daftar drama Melolo."""
+    builder = InlineKeyboardBuilder()
+
+    for drama in dramas:
+        title = drama.get("bookName") or drama.get("name") or "No Title"
+        book_id = drama.get("bookId") or drama.get("id") or ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🎬 {title}",
+                callback_data=f"melolo_detail:{book_id}",
+            )
+        )
+
+    nav_buttons = []
+    if offset > 0:
+        prev_offset = max(0, offset - 20)
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Sebelumnya", callback_data=f"{nav_prefix}{prev_offset}"))
+    
+    if has_more:
+        next_offset = offset + 20
+        nav_buttons.append(InlineKeyboardButton(text="Selanjutnya ➡️", callback_data=f"{nav_prefix}{next_offset}"))
+
+    if nav_buttons:
+        builder.row(*nav_buttons)
+
+    builder.row(InlineKeyboardButton(text="🔙 Menu Melolo", callback_data="melolo:home"))
+    builder.row(InlineKeyboardButton(text="🏠 Menu Utama", callback_data="menu:home"))
 
     return builder.as_markup()
 

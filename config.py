@@ -35,6 +35,12 @@ VIGLOO_TOKEN: str = os.getenv(
     API_TOKEN,  # Default to API_TOKEN as it's from the same provider
 )
 
+# ── Melolo API ────────────────────────────────────────────
+MELOLO_BASE_URL: str = os.getenv(
+    "MELOLO_BASE_URL",
+    "https://api.sansekai.my.id/api/melolo",
+)
+
 # ── Pagination ────────────────────────────────────────────
 DRAMAS_PER_PAGE: int = 5      # Drama per halaman di list
 EPISODES_PER_PAGE: int = 12   # Episode per halaman di detail

@@ -14,7 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 from handlers import start, menu, drama
-from handlers import search, vigloo, owner
+from handlers import search, vigloo, owner, melolo
 
 # ╔══════════════════════════════════════════════════════════╗
 # ║                     LOGGING                             ║
@@ -66,6 +66,7 @@ async def main() -> None:
         vigloo.router,
         start.router,
         search.router,
+        melolo.router,
         menu.router,
         drama.router,
         owner.router,
